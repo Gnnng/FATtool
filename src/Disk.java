@@ -16,7 +16,6 @@ public class Disk extends RandomAccessFile {
 			this.seek(start);
 			this.read(byteArray);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return byteArray;
@@ -28,7 +27,6 @@ public class Disk extends RandomAccessFile {
 			this.seek(0);
 			this.read(mbr);
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return mbr;
@@ -49,10 +47,6 @@ public class Disk extends RandomAccessFile {
 		public Partition(byte[] data) {
 			typeCode = data[4];
 			lbaBegin = Utils.combineSigned(data[8], data[9], data[10], data[11]);
-//			for(int i = 0; i < 16; i++)
-//				System.out.print(Integer.toHexString((byte)data[i] & 0xff));
-//			System.out.println();
-			System.out.println(lbaBegin);
 			lbaBeginAddress = lbaBegin * 512;
 			byte[] br = Disk.this.readByteArray(lbaBeginAddress, 512);
 			oemName = new String(br, 3, 8);
@@ -77,22 +71,23 @@ public class Disk extends RandomAccessFile {
 			dataBegin = rootDirectoryBegin + maxRootDirectoryEntries * 32 / 512;
 			dataBeginAddress = dataBegin * 512;
 			
-			System.out.println("OEM name is \"" + oemName + "\"");
-			System.out.println("Fat name is " + fatName);
+//			System.out.println("OEM name is \"" + oemName + "\"");
+//			System.out.println("Fat name is " + fatName);
 //			System.out.println("bytes per sector " + bytesPerSector);
-			System.out.println("reserved sectors " + reservedSectors);
-			System.out.println("number of FAT " + numberOfFAT);
-			System.out.println("sectors per FAT " + sectorsPerFAT);
-			
-			System.out.println("Root dir " + Integer.toHexString((int)rootDirectoryBeginAddress));
-			System.out.println("In Partition 1");
+//			System.out.println("reserved sectors " + reservedSectors);
+//			System.out.println("number of FAT " + numberOfFAT);
+//			System.out.println("sectors per FAT " + sectorsPerFAT);
+//			
+//			System.out.println("Root dir " + Integer.toHexString((int)rootDirectoryBeginAddress));
+
+		}
+		public void buildTree() {
 			fileTree = new BaseNode();
 			for(int i = 0; i < maxRootDirectoryEntries; i++) {
 				RootDirectoryEntry entry = new RootDirectoryEntry(rootDirectoryBeginAddress + i * 32);
 				if (entry.getFirstByte() == 0)
 					break;
 				if (entry.isValid()) {
-//					System.out.printf("%3d %8s%8s%8h%8d\n", i, entry.getShortName(), Integer.toBinaryString(entry.getAttribute()), (entry.getCluster() - 2) * 512 + dataBeginAddress, entry.getCluster());
 					if (entry.isDirectory()) {
 						fileTree.subList.add(new DirNode(entry));
 					} else {
@@ -101,15 +96,19 @@ public class Disk extends RandomAccessFile {
 				}
 			}
 			for(BaseNode i: fileTree.subList) {
-				i.dir(2);
-				System.out.println("\t" + i.getShortName());
+				i.dfs(0);
 			}
-			
+		}
+
+		public void printTree() {
+			System.out.println("In Partition 1");
+			for(BaseNode i: fileTree.subList) {
+				System.out.println("\t" + i.getName());
+			}
 			for(BaseNode i: fileTree.subList) {
 				i.print("");
 			}
 		}
-
 		public class BaseNode {
 			RootDirectoryEntry first;
 			LinkedList<BaseNode> subList;
@@ -128,14 +127,12 @@ public class Disk extends RandomAccessFile {
 				return first.getAttribute();
 			}
 			
-			public String getShortName() {
-				return first.getShortName();
+			public String getName() {
+				return first.getFullName();
 			}
 			
-			public void dir(int depth) {
-//				if (this instanceof FileNode)
-//					return;
-				if (!this.first.isDirectory())
+			public void dfs(int depth) {
+				if (!first.isDirectory() || first.isDotDirectory())
 					return;
 				for(Cluster cluster = new Cluster(first.getCluster()); cluster.hasNext(); cluster = cluster.next()) {
 					long clusterBeginAddress = dataBeginAddress + (cluster.number - 2) * 512;
@@ -144,7 +141,6 @@ public class Disk extends RandomAccessFile {
 						if (entry.getFirstByte() == 0)
 							break;
 						if (entry.isValid()) {
-//							System.out.printf("%3d %8s%8s%8h%8d\n", i, entry.getShortName(), Integer.toBinaryString(entry.getAttribute()), (entry.getCluster() - 2) * 512 + dataBeginAddress, entry.getCluster());
 							if (entry.isDirectory()) {
 								subList.add(new DirNode(entry));
 							} else {
@@ -153,24 +149,24 @@ public class Disk extends RandomAccessFile {
 						}
 					}
 				} 
-//				if (depth == 0) {
-//					for(BaseNode i: subList) {
-//						i.dir(0);
-//					}
-//				} else {
-//					for(BaseNode i: subList) {
-//						i.dir(depth - 1);
-//					}
-//				}
+				if (depth == 0) {
+					for(BaseNode i: subList) {
+						i.dfs(0);
+					}
+				} else {
+					for(BaseNode i: subList) {
+						i.dfs(depth - 1);
+					}
+				}
 			}
 
 			public void print(String level) {
 				if (first.getShortName().startsWith(".") || first.getShortName().startsWith(".."))
 					return;
 				if (first.isDirectory())
-					System.out.println(level + "In \"" + getShortName() + "\"");
+					System.out.println(level + "In \"" + getName());
 				for(BaseNode i: subList) {
-					System.out.println(level + "\t" + i.getShortName());
+					System.out.println(level + "\t" + i.getName());
 				}
 				
 				for(BaseNode i: subList) {
@@ -198,18 +194,17 @@ public class Disk extends RandomAccessFile {
 				number = clusterNumber;
 				byte[] ft = Disk.this.readByteArray(Disk.Partition.this.fatBeginAddress + number * 2, 2);
 				nextCluster = Utils.combineSigned(ft[0], ft[1]) & 0xffff;
-//				System.out.println(nextCluster);
 			}
-			public Boolean hasNext() {
+			public boolean hasNext() {
 				return nextCluster >= 0x0002 && nextCluster <= 0xffef;
 			}
-			public Boolean isEmpty() {
+			public boolean isEmpty() {
 				return nextCluster == 0;
 			}
-			public Boolean isBad() {
+			public boolean isBad() {
 				return nextCluster == 0xfff7;
 			}
-			public Boolean isReserved() {
+			public boolean isReserved() {
 				return nextCluster >= 0xfff0 && nextCluster <= 0xfff6;
 			}
 			public byte[] getData() {
@@ -227,6 +222,11 @@ public class Disk extends RandomAccessFile {
 			public RootDirectoryEntry(long address) {
 				data = Disk.this.readByteArray(address, 32);
 			}
+			public boolean isDotDirectory() {
+				if (isValid() && isDirectory() && ((data[0] == (byte)'.') || (data[0] == (byte)'.' && data[1] == (byte)'.')))
+					return true;
+				return false;
+			}
 			public RootDirectoryEntry(byte[] data) {
 				this.data = data;
 			}
@@ -243,32 +243,32 @@ public class Disk extends RandomAccessFile {
 				return new String(data, 8, 3);
 			}
 			public String getFullName() {
-				return "NotImplented";
+				return getShortName().trim() + ((isValid() && !isDirectory()) ? "." + getExtension() : "");
 			}
 			public byte getAttribute() {
 				return data[11];
 			}
-			public Boolean isValid() {
+			public boolean isValid() {
 				byte b = getFirstByte(); 
 				return !isVolume() && b != 0x0f && (b & 0xff) != 0xe5 & b != 0x00; 
 			}
-			public Boolean isDirectory() {
+			public boolean isDirectory() {
 				return (data[11] & 0b10000) != 0; 
 			}
 			
-			public Boolean isHidden() {
+			public boolean isHidden() {
 				return (data[11] & 0b10) != 0;
 			}
 			
-			public Boolean isSystem() {
+			public boolean isSystem() {
 				return (data[11] & 0b100) != 0;
 			}
 			
-			public Boolean isVolume() {
+			public boolean isVolume() {
 				return (data[11] & 0b1000) != 0;
 			}
 			
-			public Boolean isReadOnly() {
+			public boolean isReadOnly() {
 				return (data[11] & 0b1) != 0;
 			}
 			public int getTime() {
