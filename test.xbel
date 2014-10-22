@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE xbel>
+<xbel version="1.0">
+    <folder folded="yes">
+        <title>computer</title>
+        <folder folded="yes">
+            <title>cpu</title>
+            <bookmark href="10mb">
+                <title>reg</title>
+            </bookmark>
+            <bookmark href="10mb">
+                <title>alu ss</title>
+            </bookmark>
+        </folder>
+        <bookmark href="30mb">
+            <title>sssss</title>
+        </bookmark>
+        <bookmark href="10mb">
+            <title>keyboard</title>
+        </bookmark>
+    </folder>
+</xbel>
