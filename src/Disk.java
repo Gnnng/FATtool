@@ -1,6 +1,25 @@
+import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.LinkedList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+ 
+
+
+
+import org.w3c.dom.Attr;
+import org.w3c.dom.Document;
+import org.w3c.dom.DocumentType;
+import org.w3c.dom.Element;
 
 public class Disk extends RandomAccessFile {
 	Partition partition1, partition2, partition3, partition4;
@@ -109,6 +128,76 @@ public class Disk extends RandomAccessFile {
 				i.print("");
 			}
 		}
+		
+		public class Xbel {
+			Document doc;
+			public Xbel() {
+				DocumentBuilderFactory docFactory = DocumentBuilderFactory.newInstance();
+				DocumentBuilder docBuilder = null;
+				try {
+					docBuilder = docFactory.newDocumentBuilder();
+				} catch (ParserConfigurationException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				doc = docBuilder.newDocument();
+				Element root = doc.createElement("xbel");
+				root.setAttribute("version", "1.0");
+				
+				for(BaseNode i: fileTree.subList) {
+					root.appendChild(buildNode(i));
+				}
+				
+				doc.appendChild(root);
+			}
+			
+			public Element buildNode(BaseNode bn) {
+				Element node = createNode(bn);
+				for(BaseNode i: bn.subList) {
+					if (!i.first.isDotDirectory()) {
+						node.appendChild(buildNode(i));
+					}
+				}
+				return node;
+			}
+			
+			public void writeFile(String fileName) {
+				TransformerFactory transformerFactory = TransformerFactory
+						.newInstance();
+				Transformer transformer = null;
+				try {
+					transformer = transformerFactory.newTransformer();
+				} catch (TransformerConfigurationException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				DOMSource source = new DOMSource(doc);
+				StreamResult result = new StreamResult(new File(
+						fileName));
+				try {
+					transformer.transform(source, result);
+				} catch (TransformerException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+			public Element createNode(BaseNode bn) {
+				Element node = null;
+				if (bn.first.isDirectory()) {
+					node = doc.createElement("folder");
+					node.setAttribute("folded", "no");
+				} else {
+					node = doc.createElement("bookmark");
+					node.setAttribute("href", Long.toString(bn.first.getSize()));
+				}
+				Element nodeTitle = doc.createElement("title");
+				nodeTitle.setTextContent(bn.getName());
+				node.appendChild(nodeTitle);
+				return node;
+			}
+		}		
+		
 		public class BaseNode {
 			RootDirectoryEntry first;
 			LinkedList<BaseNode> subList;
@@ -164,7 +253,7 @@ public class Disk extends RandomAccessFile {
 				if (first.getShortName().startsWith(".") || first.getShortName().startsWith(".."))
 					return;
 				if (first.isDirectory())
-					System.out.println(level + "In \"" + getName());
+					System.out.println(level + "In \"" + getName() + "\"");
 				for(BaseNode i: subList) {
 					System.out.println(level + "\t" + i.getName());
 				}
@@ -243,7 +332,7 @@ public class Disk extends RandomAccessFile {
 				return new String(data, 8, 3);
 			}
 			public String getFullName() {
-				return getShortName().trim() + ((isValid() && !isDirectory()) ? "." + getExtension() : "");
+				return getShortName().trim() + ((isValid() && !isDirectory() && !getExtension().equals("   ")) ? "." + getExtension() : "");
 			}
 			public byte getAttribute() {
 				return data[11];
@@ -268,6 +357,9 @@ public class Disk extends RandomAccessFile {
 				return (data[11] & 0b1000) != 0;
 			}
 			
+			public boolean archive() {
+				return (data[11] & 0b100000) != 0;
+			}
 			public boolean isReadOnly() {
 				return (data[11] & 0b1) != 0;
 			}
