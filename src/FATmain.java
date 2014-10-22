@@ -1,24 +1,97 @@
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.RandomAccessFile;
-import java.io.Serializable;
-import java.util.ArrayList;
+
+
+class Utils {
+	public static int combineSigned(byte...bs ) {
+		int result = 0;
+		for(int i = 0; i < bs.length; i++) {
+			result += bs[i] << (i * 8); 
+		}
+		return result;
+	}
+}
 
 class Disk extends RandomAccessFile{
 	public Disk(String filepath, String mode) throws FileNotFoundException {
 		super(filepath, mode);
 	}
+	
+	// inner classes 
+	public class Cluster {
+		private long address;
+		public long next;
+		protected byte[] data; 
+		public Cluster() {
+			// do nothing
+			address = -1;
+		}
+		public Cluster(long address) throws IOException {
+			if (address != -1) {
+				this.address = address;
+				Disk.this.seek(address);
+				data = new byte[512];
+				Disk.this.read(data);
+			} else {
+				// TODO
+			}
+		}
+	}
+	
+	public class RootDirectoryEntry extends Cluster {
+		public RootDirectoryEntry(byte[] data) {
+			super();
+			this.data = data;
+		}
+		
+		public byte getFirstByte() {
+			return data[0];
+		}
+		public void setFirstByte(byte newFirst) {
+			data[0] = newFirst;
+		}
+		public String getShortName() {
+			return new String(data, 0, 8);
+		}
+		public String getExtension() {
+			return new String(data, 8, 3);
+		}
+		public String getFullName() {
+			return "NotImplented";
+		}
+		public byte getAttribute() {
+			return data[11];
+		}
+		public int getTime() {
+			return Utils.combineSigned(data[22], data[23]);
+		}
+		public int getDate() {
+			return Utils.combineSigned(data[24], data[25]);
+		}
+		public long getClusterAddress() {
+			return Utils.combineSigned(data[26], data[27]);
+		}
+		public long getSize() {
+			return Utils.combineSigned(data[28], data[29], data[30], data[31]);
+		}
+		
+//		public int getOrdinarlFiled() {
+//			return data[0] & 0xff;
+//		}
+	}
+	
+//	class FATentry extends Cluster {
+//		
+//	}
 }
 
 public class FATmain {
+//	class Disk extends RandomAccessFile{
+//		public Disk(String filepath, String mode) throws FileNotFoundException {
+//			super(filepath, mode);
+//		}
+//	}
 	public static void main(String[] args) throws Exception {
 		// TODO Auto-generated method stub
 		Disk disk = new Disk("F:\\v2.vhd", "r");
@@ -66,7 +139,8 @@ public class FATmain {
 		int sectorsPerFAT = BootRecord[0x16] + (BootRecord[0x17] << 8);
 		int numberOfHiddenSectors = BootRecord[0x1c] + (BootRecord[0x1d] << 8) + (BootRecord[0x1e] << 16) + (BootRecord[0x1f] << 24);
 //		int numberOfSectorsInPartition = BootRecord[0x20] + (BootRecord[0x21] << 8) + (BootRecord[0x22] << 16) + (BootRecord[0x23] << 24);
-		String volumeName = new String(BootRecord, 0x2b, 11);		String fatName = new String(BootRecord, 0x36, 8);
+		String volumeName = new String(BootRecord, 0x2b, 11);		
+		String fatName = new String(BootRecord, 0x36, 8);
 		
 		System.out.println("OEM name is \"" + oemName + "\"");
 		System.out.println("bytes per sector " + bytesPerSector);
@@ -89,6 +163,42 @@ public class FATmain {
 		int dataBegin = directoryBegin + maxRootDirectoryEntries * 32 / 512;
 		int dataBeginAddress = dataBegin * 512;
 		System.out.println("Cluster #2 begins at " + Integer.toHexString(dataBeginAddress));
-
+		
+		// test Utils
+		byte a = (byte)0x1;
+		byte b = (byte)0x2;
+		byte c = (byte)0x3;
+		byte d = (byte)0x4;
+		System.out.println(Utils.combineSigned(a));
+		System.out.println(Utils.combineSigned(a, b));
+		System.out.println(Utils.combineSigned(a, b, c));
+		System.out.println(Utils.combineSigned(a, b, c, d));
+		
+		disk.seek(directoryBeginAddress);
+		String formatStrHead = "###	name	attribute	address";
+		String formatStr = "%3d %8s%8s%8d\n";
+		System.out.println(formatStrHead);
+		for(int i = 0; i < maxRootDirectoryEntries; i++) {
+			byte[] directory = new byte[32];
+			disk.read(directory);
+			Disk.RootDirectoryEntry entry = disk.new RootDirectoryEntry(directory);
+			if (entry.getAttribute() == 0x08) {
+				// volume id
+				System.out.println("Volume is "+ entry.getShortName());
+			} else if (entry.getAttribute() == 0x0f) {
+				// for LFN use
+			} else if ((entry.getFirstByte() & 0xff) == 0xe5) {
+				// deleted
+//				System.out.print("deleted ");
+			} else if (entry.getFirstByte() == 0x00) {
+				break;
+			} else {
+				System.out.print(Integer.toHexString(entry.getFirstByte()));
+//				if (entry.getFirstByte() == 0xe5) {
+//					entry.setFirstByte((byte)0x05);
+//				}
+				System.out.printf(formatStr, i, entry.getShortName(), Integer.toBinaryString(entry.getAttribute()), entry.getClusterAddress());
+			}
+		}
 	}
 }
