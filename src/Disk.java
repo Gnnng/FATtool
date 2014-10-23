@@ -183,7 +183,7 @@ public class Disk extends RandomAccessFile {
 				Element node = null;
 				if (bn.first.isDirectory()) {
 					node = doc.createElement("folder");
-					node.setAttribute("folded", "no");
+					node.setAttribute("folded", "yes");
 				} else {
 					node = doc.createElement("bookmark");
 					node.setAttribute("href", Long.toString(bn.first.getSize()));
